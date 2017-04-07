@@ -1,0 +1,369 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "allowedHost": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "The domain under which the app will run (e.g: app.acrosstimezones.com)."
+      }
+    },
+    "sqlServerAdminLogin": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "The SQL server admin username."
+      }
+    },
+    "sqlServerAdminLoginPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "The SQL server admin password"
+      }
+    },
+    "sqlDatabaseName": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "The SQL database name"
+      }
+    },
+    "sqlDatabaseCollation": {
+      "type": "string",
+      "minLength": 1,
+      "defaultValue": "SQL_Latin1_General_CP1_CI_AS",
+      "metadata": {
+        "description": "The SQL database collation"
+      }
+    },
+    "sqlDatabaseEdition": {
+      "type": "string",
+      "defaultValue": "Basic",
+      "allowedValues": [
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "The SQL server edition"
+      }
+    },
+    "sqldatabaseRequestedServiceObjectiveName": {
+      "type": "string",
+      "defaultValue": "Basic",
+      "allowedValues": [
+        "Basic",
+        "S0",
+        "S1",
+        "S2",
+        "P1",
+        "P2",
+        "P3"
+      ],
+      "metadata": {
+        "description": "Describes the performance level for Edition"
+      }
+    },
+    "webAppName": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "The name of the Web App"
+      }
+    },
+    "webAppSKU": {
+      "type": "string",
+      "defaultValue": "Free",
+      "allowedValues": [
+        "Free",
+        "Shared",
+        "Basic",
+        "Standard"
+      ],
+      "metadata": {
+        "description": "The Web App pricing tier"
+      }
+    },
+    "workerSize": {
+      "type": "string",
+      "defaultValue": "0",
+      "allowedValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "metadata": {
+        "description": "The Web App worker size"
+      }
+    },
+    "storageAccountType": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_ZRS",
+        "Standard_GRS",
+        "Standard_RAGRS",
+        "Premium_LRS"
+      ],
+      "metadata": {
+        "description": "The storage account type"
+      }
+    },
+    "azureSearchname": {
+      "type": "string",
+      "metadata": {
+        "description": "The azure search instance name"
+      }
+    },
+    "azureSearchSku": {
+      "type": "string",
+      "defaultValue": "free",
+      "allowedValues": [
+        "free",
+        "standard",
+        "standard2"
+      ],
+      "metadata": {
+        "description": "The azure search instance tier."
+      }
+    },
+    "azureSearchReplicaCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "allowedValues": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "metadata": {
+        "description": "The number of search replicas"
+      }
+    },
+    "azureSearchPartitionCount": {
+      "type": "int",
+      "defaultValue": 1,
+      "allowedValues": [
+        1,
+        2,
+        3,
+        4,
+        6,
+        12
+      ],
+      "metadata": {
+        "description": "The number of search partitions"
+      }
+    }
+  },
+  "variables": {
+    "sqlServerName": "[concat(uniquestring(resourceGroup().id), 'sqlserver')]",
+    "sqlServerLoginName": "[concat(parameters('sqlServerAdminLogin'), '@', parameters('sqlDatabaseName'))]",
+    "sqlServerHost": "[concat('tcp:', variables('sqlServerName'), '.database.windows.net,1433')]",    
+    "storageAccountName": "[concat(uniquestring(resourceGroup().id), 'storage')]",
+    "searchUrl": "[concat('https://', parameters('azureSearchname'), '.search.windows.net')]"
+  },
+  "resources": [
+    {
+      "name": "[variables('sqlServerName')]",
+      "type": "Microsoft.Sql/servers",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2014-04-01-preview",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "SQL Server"
+      },
+      "properties": {
+        "administratorLogin": "[parameters('sqlServerAdminLogin')]",
+        "administratorLoginPassword": "[parameters('sqlServerAdminLoginPassword')]",
+        "version": "12.0"
+      },
+      "resources": [
+        {
+          "name": "AllowAllWindowsAzureIps",
+          "type": "firewallrules",
+          "location": "[resourceGroup().location]",
+          "apiVersion": "2014-04-01-preview",
+          "dependsOn": [
+            "[concat('Microsoft.Sql/servers/', variables('sqlServerName'))]"
+          ],
+          "properties": {
+            "startIpAddress": "0.0.0.0",
+            "endIpAddress": "0.0.0.0"
+          }
+        },
+        {
+          "name": "[parameters('sqlDatabaseName')]",
+          "type": "databases",
+          "location": "[resourceGroup().location]",
+          "apiVersion": "2014-04-01-preview",
+          "dependsOn": [
+            "[variables('sqlServerName')]"
+          ],
+          "tags": {
+            "displayName": "SQL Database"
+          },
+          "properties": {
+            "collation": "[parameters('sqlDatabaseCollation')]",
+            "edition": "[parameters('sqlDatabaseEdition')]",
+            "maxSizeBytes": "1073741824",
+            "requestedServiceObjectiveName": "[parameters('sqldatabaseRequestedServiceObjectiveName')]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "[parameters('webAppName')]",
+      "type": "Microsoft.Web/serverfarms",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2014-06-01",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "App Service Plan"
+      },
+      "properties": {
+        "name": "[parameters('webAppName')]",
+        "sku": "[parameters('webAppSKU')]",
+        "workerSize": "[parameters('workerSize')]",
+        "numberOfWorkers": 1
+      }
+    },
+    {
+      "name": "[parameters('webAppName')]",
+      "type": "Microsoft.Web/sites",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-08-01",
+      "dependsOn": [
+        "[concat('Microsoft.Web/serverfarms/', parameters('webAppName'))]"
+      ],
+      "tags": {
+        "[concat('hidden-related:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/', parameters('webAppName'))]": "Resource",
+        "displayName": "Web App"
+      },
+      "properties": {
+        "name": "[parameters('webAppName')]",
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms/', parameters('webAppName'))]",
+        "siteConfig": {
+            "appSettings": [
+                {
+                    "name": "ALLOWED_HOST",
+                    "value": "[parameters('allowedHost')]"
+                },
+                {
+                    "name": "AZURE_STORAGE_ACCOUNT_NAME",
+                    "value": "[variables('storageAccountName')]"
+                },
+                {
+                    "name": "DB_NAME",
+                    "value": "[parameters('sqlDatabaseName')]"
+                },
+                {
+                    "name": "DB_USERNAME",
+                    "value": "[parameters('sqlServerAdminLogin')]"
+                },
+                {
+                    "name": "DB_PASSWORD",
+                    "value": "[parameters('sqlServerAdminLoginPassword')]"
+                },
+                {
+                    "name": "DB_HOST",
+                    "value": "[variables('sqlServerHost')]"
+                },
+                {
+                    "name": "DB_DRIVER",
+                    "value": "ODBC Driver 13 for SQL Server"
+                },
+                {
+                    "name": "AZURE_SEARCH_VERSION",
+                    "value": "2016-09-01"
+                },
+                {
+                    "name": "AZURE_SEARCH_INDEX",
+                    "value": "TBD"
+                },
+                {
+                    "name": "AZURE_SEARCH_URL",
+                    "value": "[variables('searchUrl')]"
+                },
+                {
+                    "name": "AZURE_STORAGE_CONTAINER",
+                    "value": "TBD"
+                },
+                {
+                    "name": "AZURE_STORAGE_ACCOUNT_KEY",
+                    "value": "TBD"
+                },
+                {
+                    "name": "AZURE_SEARCH_ADMIN_API_KEY",
+                    "value": "TBD"
+                },
+                {
+                    "name": "TENANT_ID",
+                    "value": "TBD"
+                },
+                {
+                    "name": "AAD_CLIENT_ID",
+                    "value": "TBD"
+                },
+                {
+                    "name": "AAD_CLIENT_SECRET",
+                    "value": "TBD"
+                }
+            ]
+        }        
+      },
+      "resources": [
+        
+      ]
+    },
+    {
+      "name": "[variables('storageAccountName')]",
+      "type": "Microsoft.Storage/storageAccounts",
+      "location": "[resourceGroup().location]",
+      "apiVersion": "2015-06-15",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "Storage Account"
+      },
+      "properties": {
+        "accountType": "[parameters('storageAccountType')]"
+      }
+    },
+    {
+      "apiVersion": "2015-02-28",
+      "name": "[parameters('azureSearchname')]",
+      "type": "Microsoft.Search/searchServices",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "Azure Search"
+      },
+      "properties": {
+        "sku": {
+          "name": "[parameters('azureSearchsku')]"
+        },
+        "replicaCount": "[parameters('azureSearchreplicaCount')]",
+        "partitionCount": "[parameters('azureSearchpartitionCount')]"
+      }
+    },
+      {
+          "name": "appinsights",
+          "type": "Microsoft.Insights/components",
+          "location": "[resourceGroup().location]",
+          "apiVersion": "2014-04-01",
+        "dependsOn": [
+          "[concat('Microsoft.Web/sites/', parameters('webAppName'))]"
+        ],
+          "tags": {
+              "displayName": "Application Insights"
+          },
+        "properties": {
+          "applicationId": "[parameters('webAppName')]"
+        }
+      }
+
+  ]
+}
